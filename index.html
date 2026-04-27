@@ -89,7 +89,7 @@
   .cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .cal-grid { display: grid; gap: 1px; background: var(--border); min-width: 100%; }
   .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; }
-  .cal-room-label { background: var(--primary-2); color: #fff; font-weight: 600; font-size: 11px; }
+  .cal-room-label { background: var(--primary-2); color: #fff; font-weight: 600; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 var(--border); }
   .cal-day-header { background: var(--primary-2); color: #fff; padding: 4px 0; line-height: 1.1; }
   .cal-day-header.weekend { background: var(--weekend-header); }
   .cal-day-header .dow { font-size: 9px; opacity: 0.9; }
@@ -571,19 +571,21 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
   if (!userName) return toast('Chọn tên đăng nhập', 'error');
   if (!pin || pin.length !== 4) return toast('Nhập đủ 4 số PIN', 'error');
 
-  // Verify PIN qua config (đơn giản - production nên hash)
-  // Hiện tại backend không expose PIN, nên ta tin cậy frontend chỉ lưu user
-  // Để bảo mật cao hơn cần thêm action 'verifyPin' ở backend
-  const u = state.config.users.find(x => x.userName === userName);
-  if (!u) return toast('User không tồn tại', 'error');
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
+  const r = await api('verifyPin', { userName, pin }, 'POST');
+  btn.disabled = false; btn.textContent = 'Đăng nhập';
 
-  state.user = u;
-  localStorage.setItem('hs_user', JSON.stringify(u));
+  if (!r.ok) return toast(r.error || 'Sai PIN', 'error');
+
+  state.user = r.user;
+  localStorage.setItem('hs_user', JSON.stringify(r.user));
   showApp();
 });
 
 function doLogout() {
   if (!confirm('Đăng xuất?')) return;
+  stopChangePolling();
   localStorage.removeItem('hs_user');
   state.user = null;
   document.getElementById('loginScreen').style.display = 'flex';
@@ -608,6 +610,63 @@ function showApp() {
   state.calendar.month = now.getMonth() + 1;
   state.calendar.year = now.getFullYear();
   loadCalendar();
+
+  // Bắt đầu poll thay đổi để auto-refresh khi có booking mới từ device khác
+  startChangePolling();
+}
+
+// =========================================================================
+//                          AUTO-REFRESH POLLING
+// =========================================================================
+let pollInterval = null;
+let lastSeenChange = 0;
+let pendingNewBookings = 0;
+
+function startChangePolling() {
+  stopChangePolling();
+  // Poll lần đầu sau 5s để có baseline
+  setTimeout(async () => {
+    const r = await api('lastChange');
+    if (r.ok) lastSeenChange = r.t;
+  }, 1000);
+
+  pollInterval = setInterval(async () => {
+    const r = await api('lastChange');
+    if (!r.ok) return;
+    if (r.t > lastSeenChange && lastSeenChange > 0) {
+      // Có thay đổi từ device khác (hoặc do chính device này — đã đồng bộ qua localStorage)
+      pendingNewBookings++;
+      updateBellBadge();
+      // Nếu đang xem tab Lịch → tự reload
+      const currentPage = document.querySelector('.page.active');
+      if (currentPage && currentPage.id === 'pageCalendar') {
+        toast('🔄 Có booking mới — đang cập nhật lịch...', 'success');
+        loadCalendar();
+      } else {
+        toast('🔔 Có booking mới! Bấm chuông để xem.', 'success');
+      }
+    }
+    lastSeenChange = r.t;
+  }, 30000); // 30 giây
+}
+
+function stopChangePolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
+function updateBellBadge() {
+  const badge = document.getElementById('bellBadge');
+  if (pendingNewBookings > 0) {
+    badge.textContent = pendingNewBookings;
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function clearBellBadge() {
+  pendingNewBookings = 0;
+  updateBellBadge();
 }
 
 // =========================================================================
@@ -803,8 +862,10 @@ async function quickCheckIn(bookingId) {
 }
 
 async function quickCancel(bookingId) {
-  if (!confirm(`Hủy booking ${bookingId}?`)) return;
-  const r = await api('cancelBooking', { bookingId, userName: state.user.userName }, 'POST');
+  const reason = prompt(`Hủy booking ${bookingId}\n\nLý do hủy (có thể bỏ trống):`, 'Đổi ý');
+  // prompt trả về null khi bấm Cancel → không hủy
+  if (reason === null) return;
+  const r = await api('cancelBooking', { bookingId, reason: reason || '', userName: state.user.userName }, 'POST');
   if (r.ok) { toast('Đã hủy ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
   else toast(r.error || 'Lỗi', 'error');
 }
@@ -1178,7 +1239,17 @@ function showBookingFromList(bookingId) {
 // =========================================================================
 //                          UTILS
 // =========================================================================
-function showRecentNotifications() { toast('Tính năng thông báo đang phát triển', 'info'); }
+function showRecentNotifications() {
+  if (pendingNewBookings > 0) {
+    clearBellBadge();
+    toast('Đã làm mới · ' + pendingNewBookings + ' booking mới đã được tải', 'success');
+    loadCalendar();
+    pendingNewBookings = 0;
+  } else {
+    toast('Chưa có thông báo mới', 'info');
+    loadCalendar(); // refresh thủ công luôn
+  }
+}
 
 async function reloadConfig() {
   await loadConfig();
