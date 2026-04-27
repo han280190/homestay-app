@@ -115,6 +115,7 @@
   .field { }
   .field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
   .field input, .field select, .field textarea { width: 100%; padding: 9px 10px; border: 0.5px solid var(--border); border-radius: 8px; font-size: 14px; background: #fff; font-family: inherit; }
+  .field input.invalid { border: 1.5px solid var(--danger) !important; background: #fff5f0; }
   .field textarea { min-height: 60px; resize: vertical; }
 
   .room-card { background: #fff; border: 0.5px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
@@ -418,13 +419,8 @@
         <select id="formNguon"><option value="">-</option></select>
       </div>
       <div class="field">
-        <label>Gói</label>
-        <select id="formGoi">
-          <option value="No Discount">No Discount</option>
-          <option value="Discount 12.5%">Discount 12.5%</option>
-          <option value="Discount 20%">Discount 20%</option>
-          <option value="Khuyến mãi">Khuyến mãi</option>
-        </select>
+        <label>Giá phòng/đêm <span style="color:var(--danger);">*</span></label>
+        <input type="text" inputmode="numeric" id="formGiaPhong" placeholder="vd 400.000" oninput="formatMoneyInput(this); recomputePrice();">
       </div>
     </div>
     <div class="field" style="margin-bottom: 10px;">
@@ -1073,7 +1069,7 @@ async function openCreateBooking(roomKey, from, to) {
 
   // Init UI
   document.getElementById('formRoomTitle').textContent = `${room.homestay} · ${room.soPhong}`;
-  document.getElementById('formRoomDesc').textContent = `${room.loaiPhong} · ${room.loaiGiuong}`;
+  document.getElementById('formRoomDesc').textContent = `${room.loaiPhong} · ${room.loaiGiuong} · gợi ý ${formatMoney(room.giaMacDinh)}/đêm`;
   document.getElementById('formFrom').value = from;
   document.getElementById('formTo').value = to;
   document.getElementById('formTen').value = '';
@@ -1082,8 +1078,14 @@ async function openCreateBooking(roomKey, from, to) {
   document.getElementById('formGhiChu').value = '';
   document.getElementById('formTienCoc').value = '';
   document.getElementById('formQuocGia').value = 'VN';
-  document.getElementById('formGoi').value = 'No Discount';
   document.getElementById('formNguon').value = '';
+
+  // v5: ô giá phòng - placeholder gợi ý theo giá mặc định, để trống bắt user nhập
+  const giaPhongInput = document.getElementById('formGiaPhong');
+  giaPhongInput.value = '';
+  giaPhongInput.placeholder = 'vd ' + Number(room.giaMacDinh).toLocaleString('vi-VN');
+  giaPhongInput.classList.remove('invalid');
+
   setFormStatus('Đặt Chỗ');
   recomputePrice();
   startLockTimer();
@@ -1137,19 +1139,31 @@ function recomputePrice() {
   const td = parseISO(to);
   if (!fd || !td || td <= fd) return;
   const nights = Math.round((td - fd) / 86400000);
-  const total = room.giaMacDinh * nights;
+
+  // v5: Lấy giá user nhập (không còn dùng giaMacDinh)
+  const giaPhongRaw = document.getElementById('formGiaPhong').value.replace(/[^\d]/g, '');
+  const giaPhong = Number(giaPhongRaw) || 0;
+  const total = giaPhong * nights;
+
   const cocStr = document.getElementById('formTienCoc').value.replace(/[^\d]/g, '');
   const coc = Number(cocStr) || 0;
   const remain = total - coc;
 
-  document.getElementById('priceFormula').textContent = `${nights} đêm × ${formatMoney(room.giaMacDinh)}`;
-  document.getElementById('priceTotal').textContent = formatMoney(total);
-  document.getElementById('sumTotal').textContent = formatMoney(total);
+  // Hiển thị
+  if (giaPhong > 0) {
+    document.getElementById('priceFormula').textContent = `${nights} đêm × ${formatMoney(giaPhong)}`;
+    document.getElementById('priceTotal').textContent = formatMoney(total);
+  } else {
+    document.getElementById('priceFormula').textContent = `${nights} đêm — chưa nhập giá`;
+    document.getElementById('priceTotal').textContent = '—';
+  }
+  document.getElementById('sumTotal').textContent = giaPhong > 0 ? formatMoney(total) : '—';
   document.getElementById('sumDeposit').textContent = formatMoney(coc);
-  document.getElementById('sumRemain').textContent = formatMoney(remain);
+  document.getElementById('sumRemain').textContent = giaPhong > 0 ? formatMoney(remain) : '—';
 
   state.form.from = from;
   state.form.to = to;
+  state.form.giaPhong = giaPhong;
 }
 
 function formatMoneyInput(input) {
@@ -1164,6 +1178,18 @@ async function submitBooking() {
   if (!ten) return toast('Nhập tên khách', 'error');
   if (!sdt) return toast('Nhập SĐT', 'error');
   if (!state.form.roomKey) return toast('Chưa chọn phòng', 'error');
+
+  // v5: validate giá phòng/đêm
+  const giaPhongInput = document.getElementById('formGiaPhong');
+  const giaPhongRaw = giaPhongInput.value.replace(/[^\d]/g, '');
+  const giaPhong = Number(giaPhongRaw) || 0;
+  if (giaPhong <= 0) {
+    giaPhongInput.classList.add('invalid');
+    giaPhongInput.focus();
+    toast('Vui lòng nhập giá phòng/đêm', 'error');
+    return;
+  }
+  giaPhongInput.classList.remove('invalid');
 
   const from = document.getElementById('formFrom').value;
   const to = document.getElementById('formTo').value;
@@ -1180,8 +1206,8 @@ async function submitBooking() {
     ten, sdt, cccd,
     quocGia: document.getElementById('formQuocGia').value,
     nguon: document.getElementById('formNguon').value,
-    goi: document.getElementById('formGoi').value,
     ghiChu: document.getElementById('formGhiChu').value,
+    giaCk: giaPhong,    // v5: giá user nhập
     tienCoc,
     tinhTrang: state.form.status
   };
@@ -1192,8 +1218,8 @@ async function submitBooking() {
   btn.disabled = false; btn.textContent = 'XÁC NHẬN BOOKING';
 
   if (!r.ok) return toast(r.error || 'Lỗi', 'error');
-  state.form.locked = false; // backend đã unlock rồi
-  clearAllCalCache(); // Xóa cache để load data mới ngay
+  state.form.locked = false;
+  clearAllCalCache();
   closeBookingModal();
   toast(`✓ Đã tạo ${r.bookingId}`, 'success');
   loadCalendar();
