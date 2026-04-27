@@ -87,16 +87,17 @@
   /* === Calendar grid === */
   .cal-wrap { background: #fff; border-radius: 10px; overflow: hidden; border: 0.5px solid var(--border); }
   .cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .cal-grid { display: grid; gap: 1px; background: var(--border); min-width: 100%; }
-  .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; }
-  .cal-room-label { background: var(--primary-2); color: #fff; font-weight: 600; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 var(--border); }
-  .cal-day-header { background: var(--primary-2); color: #fff; padding: 4px 0; line-height: 1.1; }
+  .cal-grid { display: grid; gap: 0; background: #fff; min-width: 100%; }
+  .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; border-right: 0.5px solid #e6e4ea; border-bottom: 0.5px solid #e6e4ea; }
+  .cal-cell:last-child { border-right: none; }
+  .cal-room-label { background: var(--primary-2); color: #fff; font-weight: 600; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 #b62d93; }
+  .cal-day-header { background: var(--primary-2); color: #fff; padding: 4px 0; line-height: 1.1; border-right: 0.5px solid rgba(255,255,255,0.2); border-bottom: 0.5px solid #b62d93; }
   .cal-day-header.weekend { background: var(--weekend-header); }
   .cal-day-header .dow { font-size: 9px; opacity: 0.9; }
   .cal-day-header .day { font-size: 11px; font-weight: 600; }
   .cal-cell.empty { background: var(--empty-bg); }
   .cal-cell.weekend { background: var(--weekend-bg); }
-  .cal-cell.busy { background: var(--busy-bg); color: #fff; font-weight: 600; padding: 4px 2px; }
+  .cal-cell.busy { background: var(--busy-bg); color: #fff; font-weight: 600; padding: 4px 2px; border-right: 0.5px solid rgba(255,255,255,0.2); border-bottom: 0.5px solid rgba(255,255,255,0.15); }
   .cal-cell.busy.cancelled { background: var(--cancelled-bg); }
   .cal-cell.today-mark { box-shadow: inset 0 0 0 2px var(--danger); }
   .cal-hint { font-size: 10px; color: var(--text-faint); text-align: center; margin: 6px 0 0; }
@@ -634,7 +635,8 @@ function startChangePolling() {
     const r = await api('lastChange');
     if (!r.ok) return;
     if (r.t > lastSeenChange && lastSeenChange > 0) {
-      // Có thay đổi từ device khác (hoặc do chính device này — đã đồng bộ qua localStorage)
+      // Có thay đổi từ device khác → xóa cache localStorage để load data mới
+      clearAllCalCache();
       pendingNewBookings++;
       updateBellBadge();
       // Nếu đang xem tab Lịch → tự reload
@@ -707,14 +709,83 @@ function changeHomestay(hs) {
 
 async function loadCalendar() {
   document.getElementById('calTitle').textContent = `Tháng ${state.calendar.month}/${state.calendar.year}`;
-  document.getElementById('calContainer').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  // === Bước 1: Hiển thị NGAY data từ localStorage nếu có (instant) ===
+  const cacheKey = `cal_${state.calendar.year}_${state.calendar.month}_${state.calendar.homestay}`;
+  const localCached = readLocalCache(cacheKey);
+  if (localCached) {
+    state.calendar.data = localCached.data;
+    renderCalendar();
+    // Hiện chỉ báo nhỏ là đang refresh
+    document.getElementById('calSub').textContent += ' · 🔄 Đang cập nhật...';
+  } else {
+    document.getElementById('calContainer').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  }
+
+  // === Bước 2: Gọi API lấy data mới (chạy ngầm nếu đã có cache) ===
   const res = await api('monthCalendar', { month: state.calendar.month, year: state.calendar.year, homestay: state.calendar.homestay });
   if (!res.ok) {
-    document.getElementById('calContainer').innerHTML = `<div class="empty">${res.error || 'Lỗi tải lịch'}</div>`;
+    if (!localCached) {
+      document.getElementById('calContainer').innerHTML = `<div class="empty">${res.error || 'Lỗi tải lịch'}</div>`;
+    }
     return;
   }
   state.calendar.data = res;
+  writeLocalCache(cacheKey, res);
   renderCalendar();
+
+  // === Bước 3: Prefetch tháng trước + tháng sau ở background (không block UI) ===
+  setTimeout(() => prefetchAdjacentMonths(), 500);
+}
+
+// Lưu calendar data vào localStorage (TTL = 5 phút)
+function writeLocalCache(key, data) {
+  try {
+    localStorage.setItem('hs_' + key, JSON.stringify({ data: data, t: Date.now() }));
+  } catch (e) { /* full storage, ignore */ }
+}
+
+function readLocalCache(key) {
+  try {
+    const raw = localStorage.getItem('hs_' + key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    // Cache cũ hơn 5 phút thì không dùng nữa (tránh data quá lệch)
+    if (Date.now() - obj.t > 300000) return null;
+    return obj;
+  } catch (e) { return null; }
+}
+
+function clearAllCalCache() {
+  try {
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('hs_cal_') === 0) toRemove.push(k);
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+}
+
+// Prefetch tháng trước + tháng sau ở background
+async function prefetchAdjacentMonths() {
+  const m = state.calendar.month;
+  const y = state.calendar.year;
+  const hs = state.calendar.homestay;
+  const targets = [
+    { m: m - 1 < 1 ? 12 : m - 1, y: m - 1 < 1 ? y - 1 : y },
+    { m: m + 1 > 12 ? 1 : m + 1, y: m + 1 > 12 ? y + 1 : y }
+  ];
+  for (const t of targets) {
+    const key = `cal_${t.y}_${t.m}_${hs}`;
+    const cached = readLocalCache(key);
+    if (cached) continue; // đã có cache rồi, bỏ qua
+    // Fetch âm thầm, không hiện loading
+    try {
+      const r = await api('monthCalendar', { month: t.m, year: t.y, homestay: hs });
+      if (r.ok) writeLocalCache(key, r);
+    } catch (e) { /* ignore */ }
+  }
 }
 
 function renderCalendar() {
@@ -857,7 +928,7 @@ function closeDetailModal() {
 async function quickCheckIn(bookingId) {
   const cccd = prompt('Nhập số CCCD của khách (Enter để bỏ qua):');
   const r = await api('updateStatus', { bookingId, status: 'Check-In', cccd: cccd || '', userName: state.user.userName }, 'POST');
-  if (r.ok) { toast('Đã check-in ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
+  if (r.ok) { clearAllCalCache(); toast('Đã check-in ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
   else toast(r.error || 'Lỗi', 'error');
 }
 
@@ -866,7 +937,7 @@ async function quickCancel(bookingId) {
   // prompt trả về null khi bấm Cancel → không hủy
   if (reason === null) return;
   const r = await api('cancelBooking', { bookingId, reason: reason || '', userName: state.user.userName }, 'POST');
-  if (r.ok) { toast('Đã hủy ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
+  if (r.ok) { clearAllCalCache(); toast('Đã hủy ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
   else toast(r.error || 'Lỗi', 'error');
 }
 
@@ -1122,6 +1193,7 @@ async function submitBooking() {
 
   if (!r.ok) return toast(r.error || 'Lỗi', 'error');
   state.form.locked = false; // backend đã unlock rồi
+  clearAllCalCache(); // Xóa cache để load data mới ngay
   closeBookingModal();
   toast(`✓ Đã tạo ${r.bookingId}`, 'success');
   loadCalendar();
