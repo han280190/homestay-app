@@ -84,18 +84,19 @@
   .hs-tabs button { flex: 1; padding: 6px; border: none; border-radius: 6px; background: var(--surface); color: var(--text-muted); font-size: 12px; cursor: pointer; }
   .hs-tabs button.active { background: var(--primary); color: #fff; font-weight: 600; }
 
-  /* === Calendar grid - dùng background gap để có line phân cách rõ === */
-  .cal-wrap { background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #ccc; }
+  /* === Calendar grid (v7 - grid line rõ ràng) === */
+  .cal-wrap { background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #b8b6bd; }
   .cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .cal-grid { display: grid; gap: 1px; background: #d0d0d4; min-width: 100%; }
-  .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; }
+  /* gap 1px tạo line giữa các ô bằng background-color của parent */
+  .cal-grid { display: grid; gap: 1px; background: #b8b6bd; min-width: 100%; }
+  .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
   .cal-room-label { background: var(--primary-2); color: #fff; font-weight: 600; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 #b62d93; }
   .cal-day-header { background: var(--primary-2); color: #fff; padding: 4px 0; line-height: 1.1; }
   .cal-day-header.weekend { background: var(--weekend-header); }
   .cal-day-header .dow { font-size: 9px; opacity: 0.9; }
   .cal-day-header .day { font-size: 11px; font-weight: 600; }
-  .cal-cell.empty { background: var(--empty-bg); }
-  .cal-cell.weekend { background: var(--weekend-bg); }
+  .cal-cell.empty { background: #fff; }
+  .cal-cell.weekend { background: #FFF3C4; }
   .cal-cell.busy { background: var(--busy-bg); color: #fff; font-weight: 600; padding: 4px 2px; }
   .cal-cell.busy.cancelled { background: var(--cancelled-bg); }
   .cal-cell.today-mark { box-shadow: inset 0 0 0 2px var(--danger); }
@@ -315,12 +316,16 @@
     <span>Test kết nối API</span>
     <span class="v" id="apiStatus">-</span>
   </div>
+  <div class="menu-item" onclick="debugSpeed()">
+    <span>⏱ Đo tốc độ chi tiết</span>
+    <span class="v">›</span>
+  </div>
   <div class="menu-item" onclick="doLogout()" style="color: var(--danger);">
     <span>Đăng xuất</span>
     <span class="v">›</span>
   </div>
   <div style="margin-top: 16px; text-align: center; font-size: 11px; color: var(--text-faint);">
-    Homestay Manager v1<br>API: <span id="apiUrlShort">-</span>
+    Homestay Manager <b style="color: var(--primary);">v8</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
   </div>
 </div>
 
@@ -1356,7 +1361,24 @@ async function reloadConfig() {
 async function testApi() {
   document.getElementById('apiStatus').textContent = '...';
   const r = await api('ping');
-  document.getElementById('apiStatus').textContent = r.ok ? '✓ OK' : '✕ Lỗi';
+  document.getElementById('apiStatus').textContent = r.ok ? ('✓ ' + (r.version || 'OK')) : '✕ Lỗi';
+}
+
+async function debugSpeed() {
+  const before = Date.now();
+  toast('Đang đo tốc độ...', 'info');
+  const r = await api('debugSpeed');
+  const totalRoundtrip = Date.now() - before;
+  if (!r.ok) return alert('Lỗi: ' + (r.error || 'unknown'));
+  let msg = `📊 KẾT QUẢ ĐO TỐC ĐỘ (${r.version})\n`;
+  msg += `Round-trip toàn bộ: ${totalRoundtrip}ms\n`;
+  msg += `Tổng các step backend: ${r.totalMs}ms\n\n`;
+  msg += `Chi tiết các bước:\n`;
+  r.steps.forEach((s, i) => {
+    msg += `${i+1}. ${s.name}\n   ${s.value} · ${s.ms}ms\n`;
+  });
+  msg += `\nNếu "findRealLastDataRow" >100ms = sheet có format kéo dài, cần xử lý.`;
+  alert(msg);
 }
 
 function statusClass(s) {
