@@ -97,7 +97,7 @@
   .cal-day-header .day { font-size: 11px; font-weight: 600; }
   .cal-cell.empty { background: #fff; }
   .cal-cell.weekend { background: #FFF3C4; }
-  .cal-cell.busy { background: var(--busy-bg); color: #fff; font-weight: 600; padding: 4px 2px; }
+  .cal-cell.busy { background: var(--busy-bg); color: #fff; font-weight: 600; padding: 4px 4px; font-size: 11px; line-height: 1.2; word-break: break-word; overflow: hidden; }
   .cal-cell.busy.cancelled { background: var(--cancelled-bg); }
   .cal-cell.today-mark { box-shadow: inset 0 0 0 2px var(--danger); }
   .cal-hint { font-size: 10px; color: var(--text-faint); text-align: center; margin: 6px 0 0; }
@@ -325,7 +325,7 @@
     <span class="v">›</span>
   </div>
   <div style="margin-top: 16px; text-align: center; font-size: 11px; color: var(--text-faint);">
-    Homestay Manager <b style="color: var(--primary);">v8</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
+    Homestay Manager <b style="color: var(--primary);">v9</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
   </div>
 </div>
 
@@ -465,6 +465,90 @@
   </div>
 </div>
 
+<!-- ========== EDIT BOOKING MODAL (v9) ========== -->
+<div class="modal" id="modalEdit">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <button class="btn-ghost" onclick="closeEditModal()">‹ Hủy</button>
+      <span class="modal-title">Sửa booking</span>
+      <span style="width: 60px;"></span>
+    </div>
+
+    <div class="field-group">
+      <label style="font-size: 11px; color: var(--text-faint); display: block; margin-bottom: 4px;">BOOKING ID</label>
+      <div style="font-size: 14px; font-weight: 600; font-family: monospace;" id="editBookingId">-</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;" id="editRoomInfo">-</div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>CHECK-IN</label>
+        <input type="date" id="editFrom" onchange="recomputeEditPrice()">
+      </div>
+      <div class="field">
+        <label>CHECK-OUT</label>
+        <input type="date" id="editTo" onchange="recomputeEditPrice()">
+      </div>
+    </div>
+
+    <div style="background: #E1F5EE; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 12px; color: #04342C;" id="editPriceFormula">- đêm × -</span>
+      <span style="font-size: 13px; font-weight: 600; color: #04342C;" id="editPriceTotal">-</span>
+    </div>
+
+    <p class="section-label">Khách hàng</p>
+    <div class="field" style="margin-bottom: 10px;">
+      <label>Tên khách</label>
+      <input type="text" id="editTen" placeholder="Tên khách">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>SĐT</label>
+        <input type="tel" id="editSdt">
+      </div>
+      <div class="field">
+        <label>Quốc gia</label>
+        <select id="editQuocGia">
+          <option value="VN">🇻🇳 Việt Nam</option>
+          <option value="OTHER">🌐 Khác</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom: 10px;">
+      <label>CCCD</label>
+      <input type="text" id="editCccd" placeholder="012345678910">
+    </div>
+
+    <p class="section-label">Booking</p>
+    <div class="field-row">
+      <div class="field">
+        <label>Nguồn</label>
+        <select id="editNguon"><option value="">-</option></select>
+      </div>
+      <div class="field">
+        <label>Giá phòng/đêm</label>
+        <input type="text" inputmode="numeric" id="editGiaPhong" oninput="formatMoneyInput(this); recomputeEditPrice();">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom: 10px;">
+      <label>Tiền cọc (₫)</label>
+      <input type="text" inputmode="numeric" id="editTienCoc" oninput="formatMoneyInput(this); recomputeEditPrice();">
+    </div>
+    <div class="field" style="margin-bottom: 12px;">
+      <label>Ghi chú</label>
+      <textarea id="editGhiChu"></textarea>
+    </div>
+
+    <div class="price-summary">
+      <div class="line"><span>Tổng tiền</span><span class="v" id="editSumTotal">-</span></div>
+      <div class="line deposit"><span>Đã cọc</span><span class="v" id="editSumDeposit">-</span></div>
+      <div class="line remain total"><span>Còn lại</span><span class="v" id="editSumRemain">-</span></div>
+    </div>
+
+    <button class="submit-btn" id="btnEditSubmit" onclick="submitEditBooking()">LƯU THAY ĐỔI</button>
+  </div>
+</div>
+
 <!-- ========== BOOKING DETAIL MODAL ========== -->
 <div class="modal" id="modalDetail">
   <div class="modal-inner">
@@ -557,10 +641,13 @@ async function loadConfig() {
   const sel = document.getElementById('loginUser');
   sel.innerHTML = '<option value="">Chọn tên...</option>' +
     res.users.map(u => `<option value="${u.userName}">${u.userName} (${u.role})</option>`).join('');
-  // Populate form nguon dropdown
-  const ng = document.getElementById('formNguon');
-  ng.innerHTML = '<option value="">-</option>' +
+  // Populate form nguon dropdown (cả form tạo mới và form sửa)
+  const sourceOptions = '<option value="">-</option>' +
     res.sources.map(s => `<option value="${s}">${s}</option>`).join('');
+  const ng = document.getElementById('formNguon');
+  if (ng) ng.innerHTML = sourceOptions;
+  const editNg = document.getElementById('editNguon');
+  if (editNg) editNg.innerHTML = sourceOptions;
 }
 
 // =========================================================================
@@ -820,53 +907,81 @@ function renderCalendar() {
   }
 
   // Build matrix per room
+  // Palette 5 màu tím để phân biệt các booking liền kề
+  const PALETTE = ['#b62d93', '#8e1c70', '#d44eb1', '#6f0d59', '#a23a86'];
+
   d.rooms.forEach(room => {
     const roomKey = room.key;
     const roomLabel = (state.calendar.homestay === 'all' ? room.homestay + '·' : '') + room.soPhong;
     html += `<div class="cal-cell cal-room-label">${roomLabel}</div>`;
 
-    // Cell metadata for each day
-    const cellMeta = [];
-    for (let dd = 1; dd <= days; dd++) cellMeta.push(null);
+    // Lọc booking của phòng này, sort theo ngayDen để gán màu xen kẽ
+    const monthStart = new Date(d.year, d.month - 1, 1);
+    const monthEnd = new Date(d.year, d.month, 1);
+    const roomBookings = d.bookings
+      .filter(b => b.homestay === room.homestay && b.soPhong === room.soPhong)
+      .map(b => {
+        const bs = parseISO(b.ngayDen), be = parseISO(b.ngayDi);
+        if (!bs || !be) return null;
+        if (be <= monthStart || bs >= monthEnd) return null;
+        const start = bs < monthStart ? monthStart : bs;
+        const end = be > monthEnd ? monthEnd : be;
+        const nights = Math.round((end - start) / 86400000);
+        if (nights <= 0) return null;
+        return { booking: b, startDay: start.getDate(), nights: nights };
+      })
+      .filter(x => x !== null)
+      .sort((a, b) => a.startDay - b.startDay);
 
-    // Place bookings
-    d.bookings.forEach(b => {
-      if (b.homestay !== room.homestay || b.soPhong !== room.soPhong) return;
-      const bs = parseISO(b.ngayDen), be = parseISO(b.ngayDi);
-      if (!bs || !be) return;
-      const monthStart = new Date(d.year, d.month - 1, 1);
-      const monthEnd = new Date(d.year, d.month, 1);
-      if (be <= monthStart || bs >= monthEnd) return;
-      const start = bs < monthStart ? monthStart : bs;
-      const end = be > monthEnd ? monthEnd : be;
-      const startDay = start.getDate();
-      // Number of nights to color = days from start until end (exclusive)
-      let nights = Math.round((end - start) / 86400000);
-      if (nights <= 0) return;
-      for (let k = 0; k < nights; k++) {
-        const dayIdx = startDay - 1 + k;
-        if (dayIdx >= 0 && dayIdx < days) {
-          cellMeta[dayIdx] = { booking: b, isStart: k === 0 };
+    // Map ngày → segment (booking trải dài) | null
+    const dayToSegment = {};
+    roomBookings.forEach((seg, idx) => {
+      // Gán màu: chọn từ palette sao cho segment liền kề khác màu
+      let colorIdx = idx % PALETTE.length;
+      // Nếu booking trước đó dùng cùng màu (vd palette length 5, idx 0 và 5 trùng) → đổi
+      if (idx > 0) {
+        const prev = roomBookings[idx - 1];
+        const prevEnd = prev.startDay + prev.nights - 1;
+        const isAdjacent = (seg.startDay - prevEnd) <= 1;
+        if (isAdjacent && (idx % PALETTE.length) === ((idx - 1) % PALETTE.length)) {
+          colorIdx = (idx + 1) % PALETTE.length;
         }
+      }
+      seg.color = PALETTE[colorIdx];
+      // Đánh dấu các ngày bị chiếm
+      for (let k = 0; k < seg.nights; k++) {
+        dayToSegment[seg.startDay + k] = { ...seg, dayOffset: k };
       }
     });
 
-    // Render cells
-    for (let dd = 1; dd <= days; dd++) {
-      const meta = cellMeta[dd - 1];
+    // Render từng cell. Khi gặp ô đầu của 1 booking → render 1 cell span N cột
+    let dd = 1;
+    while (dd <= days) {
       const date = new Date(d.year, d.month - 1, dd);
       const isWeekend = (date.getDay() === 0 || date.getDay() === 6);
       const isToday = (dd === todayDay);
       const todayCls = isToday ? ' today-mark' : '';
-      if (meta) {
-        const b = meta.booking;
+
+      const seg = dayToSegment[dd];
+      if (seg && seg.dayOffset === 0) {
+        // Render 1 cell span N ngày
+        const b = seg.booking;
         const isCancelled = /h(ủ|u)y|cancel/i.test(b.tinhTrang);
+        const bg = isCancelled ? '#9E9E9E' : seg.color;
         const cls = 'cal-cell busy' + (isCancelled ? ' cancelled' : '') + todayCls;
-        const showName = meta.isStart ? (b.ten || '?') : '';
-        html += `<div class="${cls}" onclick="showBookingDetail('${b.bookingId}')" title="${b.ten} (${b.bookingId})">${showName}</div>`;
+        const ten = (b.ten || '?').replace(/'/g, '&#39;');
+        // span = nights, nhưng không vượt khỏi tháng
+        const span = Math.min(seg.nights, days - dd + 1);
+        html += `<div class="${cls}" style="grid-column: span ${span}; background: ${bg};" onclick="showBookingDetail('${b.bookingId}')" title="${ten} (${b.bookingId})">${ten}</div>`;
+        dd += span;
+      } else if (seg) {
+        // Đã được render bởi cell đầu, skip
+        dd++;
       } else {
+        // Ô trống
         const cls = 'cal-cell ' + (isWeekend ? 'weekend' : 'empty') + todayCls;
         html += `<div class="${cls}" onclick="quickCreateAt('${roomKey}', ${dd})"></div>`;
+        dd++;
       }
     }
   });
@@ -912,9 +1027,10 @@ function showBookingDetail(bookingId) {
         <div><b style="color:var(--text);">Còn lại:</b> ${formatMoney(b.doanhThu - b.tienCoc)}</div>
       </div>
     </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 12px;">
+      <button class="btn-secondary" onclick="openEditBooking('${b.bookingId}')">✎ Sửa</button>
       ${b.tinhTrang !== 'Check-In' && b.tinhTrang !== 'Hủy' ? `<button class="btn-secondary" onclick="quickCheckIn('${b.bookingId}')">✓ Check-in</button>` : '<span></span>'}
-      ${b.tinhTrang !== 'Hủy' ? `<button class="btn-secondary" style="color: var(--danger);" onclick="quickCancel('${b.bookingId}')">✕ Hủy booking</button>` : ''}
+      ${b.tinhTrang !== 'Hủy' ? `<button class="btn-secondary" style="color: var(--danger);" onclick="quickCancel('${b.bookingId}')">✕ Hủy</button>` : '<span></span>'}
     </div>
   `;
   document.getElementById('detailBody').innerHTML = html;
@@ -939,6 +1055,110 @@ async function quickCancel(bookingId) {
   const r = await api('cancelBooking', { bookingId, reason: reason || '', userName: state.user.userName }, 'POST');
   if (r.ok) { clearAllCalCache(); toast('Đã hủy ' + bookingId, 'success'); closeDetailModal(); loadCalendar(); }
   else toast(r.error || 'Lỗi', 'error');
+}
+
+// =========================================================================
+//                          EDIT BOOKING (v9)
+// =========================================================================
+let _editingBooking = null;
+
+function openEditBooking(bookingId) {
+  // Tìm booking từ data hiện có
+  let b = null;
+  if (state.calendar.data && state.calendar.data.bookings) {
+    b = state.calendar.data.bookings.find(x => x.bookingId === bookingId);
+  }
+  if (!b && state.bookings.all) {
+    b = state.bookings.all.find(x => x.bookingId === bookingId);
+  }
+  if (!b) return toast('Không tìm thấy booking', 'error');
+  _editingBooking = b;
+
+  // Đóng detail modal nếu đang mở
+  closeDetailModal();
+
+  // Fill form
+  document.getElementById('editBookingId').textContent = b.bookingId;
+  document.getElementById('editRoomInfo').textContent = `${b.homestay} · ${b.soPhong} · ${b.loaiPhong || '-'}`;
+  document.getElementById('editFrom').value = b.ngayDen || '';
+  document.getElementById('editTo').value = b.ngayDi || '';
+  document.getElementById('editTen').value = b.ten || '';
+  document.getElementById('editSdt').value = b.sdt || '';
+  document.getElementById('editCccd').value = '';  // không có sẵn trong response
+  document.getElementById('editGhiChu').value = '';
+  document.getElementById('editQuocGia').value = 'VN';
+
+  // Tính giá/đêm hiện tại từ doanhThu / số đêm
+  const fd = parseISO(b.ngayDen);
+  const td = parseISO(b.ngayDi);
+  const nights = (fd && td) ? Math.round((td - fd) / 86400000) : 1;
+  const giaCk = nights > 0 ? Math.round(b.doanhThu / nights) : 0;
+  document.getElementById('editGiaPhong').value = giaCk ? giaCk.toLocaleString('vi-VN') : '';
+  document.getElementById('editTienCoc').value = b.tienCoc ? b.tienCoc.toLocaleString('vi-VN') : '';
+  document.getElementById('editNguon').value = b.nguon || '';
+
+  recomputeEditPrice();
+  document.getElementById('modalEdit').classList.add('show');
+}
+
+function closeEditModal() {
+  document.getElementById('modalEdit').classList.remove('show');
+  _editingBooking = null;
+}
+
+function recomputeEditPrice() {
+  const from = document.getElementById('editFrom').value;
+  const to = document.getElementById('editTo').value;
+  if (!from || !to) return;
+  const fd = parseISO(from);
+  const td = parseISO(to);
+  if (!fd || !td || td <= fd) return;
+  const nights = Math.round((td - fd) / 86400000);
+  const giaPhongRaw = document.getElementById('editGiaPhong').value.replace(/[^\d]/g, '');
+  const giaPhong = Number(giaPhongRaw) || 0;
+  const total = giaPhong * nights;
+  const cocStr = document.getElementById('editTienCoc').value.replace(/[^\d]/g, '');
+  const coc = Number(cocStr) || 0;
+  const remain = total - coc;
+
+  document.getElementById('editPriceFormula').textContent = giaPhong > 0 ? `${nights} đêm × ${formatMoney(giaPhong)}` : `${nights} đêm — chưa có giá`;
+  document.getElementById('editPriceTotal').textContent = giaPhong > 0 ? formatMoney(total) : '—';
+  document.getElementById('editSumTotal').textContent = giaPhong > 0 ? formatMoney(total) : '—';
+  document.getElementById('editSumDeposit').textContent = formatMoney(coc);
+  document.getElementById('editSumRemain').textContent = giaPhong > 0 ? formatMoney(remain) : '—';
+}
+
+async function submitEditBooking() {
+  if (!_editingBooking) return;
+  const bookingId = _editingBooking.bookingId;
+
+  const params = {
+    bookingId, userName: state.user.userName,
+    ten: document.getElementById('editTen').value.trim(),
+    sdt: document.getElementById('editSdt').value.trim(),
+    cccd: document.getElementById('editCccd').value.trim(),
+    quocGia: document.getElementById('editQuocGia').value,
+    nguon: document.getElementById('editNguon').value,
+    ghiChu: document.getElementById('editGhiChu').value,
+    ngayDen: document.getElementById('editFrom').value,
+    ngayDi: document.getElementById('editTo').value
+  };
+
+  const giaCkRaw = document.getElementById('editGiaPhong').value.replace(/[^\d]/g, '');
+  if (giaCkRaw) params.giaCk = Number(giaCkRaw);
+  const cocRaw = document.getElementById('editTienCoc').value.replace(/[^\d]/g, '');
+  if (cocRaw) params.tienCoc = Number(cocRaw);
+
+  const btn = document.getElementById('btnEditSubmit');
+  btn.disabled = true; btn.textContent = 'Đang lưu...';
+  const r = await api('updateBooking', params, 'POST');
+  btn.disabled = false; btn.textContent = 'LƯU THAY ĐỔI';
+
+  if (!r.ok) return toast(r.error || 'Lỗi', 'error');
+  clearAllCalCache();
+  closeEditModal();
+  toast('✓ Đã lưu thay đổi', 'success');
+  loadCalendar();
 }
 
 // =========================================================================
