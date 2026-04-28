@@ -247,9 +247,6 @@
   </div>
   <div class="hs-tabs" id="hsTabs">
     <button class="active" data-hs="all" onclick="changeHomestay('all')">Tất cả</button>
-    <button data-hs="HS1" onclick="changeHomestay('HS1')">HS1</button>
-    <button data-hs="HS2" onclick="changeHomestay('HS2')">HS2</button>
-    <button data-hs="HS3" onclick="changeHomestay('HS3')">HS3</button>
   </div>
   <div id="calContainer">
     <div class="loading"><div class="spinner"></div><div style="margin-top:8px;">Đang tải lịch...</div></div>
@@ -281,7 +278,7 @@
     <div class="field-row">
       <div class="field">
         <label>Homestay</label>
-        <select id="findHomestay"><option value="all">Tất cả</option><option value="HS1">HS1</option><option value="HS2">HS2</option><option value="HS3">HS3</option></select>
+        <select id="findHomestay"><option value="all">Tất cả</option></select>
       </div>
       <div class="field">
         <label>Loại giường</label>
@@ -327,7 +324,7 @@
     <span class="v">›</span>
   </div>
   <div style="margin-top: 16px; text-align: center; font-size: 11px; color: var(--text-faint);">
-    Homestay Manager <b style="color: var(--primary);">v12</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
+    Homestay Manager <b style="color: var(--primary);">v13</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
   </div>
 </div>
 
@@ -699,10 +696,48 @@ function showApp() {
   const now = new Date();
   state.calendar.month = now.getMonth() + 1;
   state.calendar.year = now.getFullYear();
+
+  // v13: Load rooms 1 lần để populate filter tabs động
+  loadRoomsAndPopulateTabs();
   loadCalendar();
 
   // Bắt đầu poll thay đổi để auto-refresh khi có booking mới từ device khác
   startChangePolling();
+}
+
+// v13: Load rooms từ API rồi populate filter tabs (Tất cả + danh sách homestay duy nhất)
+async function loadRoomsAndPopulateTabs() {
+  const r = await api('rooms');
+  if (!r.ok || !r.rooms) return;
+  state.rooms = r.rooms;
+  // Lấy danh sách homestay duy nhất, giữ thứ tự xuất hiện trong ROOMS_MASTER
+  const seen = {};
+  const homestays = [];
+  r.rooms.forEach(rm => {
+    if (rm.homestay && !seen[rm.homestay]) {
+      seen[rm.homestay] = true;
+      homestays.push(rm.homestay);
+    }
+  });
+  // Populate tabs trong tab Lịch
+  const tabs = document.getElementById('hsTabs');
+  if (tabs) {
+    let html = `<button data-hs="all" class="${state.calendar.homestay === 'all' ? 'active' : ''}" onclick="changeHomestay('all')">Tất cả</button>`;
+    homestays.forEach(hs => {
+      const cls = state.calendar.homestay === hs ? 'active' : '';
+      // Hiển thị tên ngắn hơn nếu quá dài
+      const label = hs.length > 8 ? hs.substring(0, 7) + '…' : hs;
+      html += `<button data-hs="${hs}" class="${cls}" onclick="changeHomestay('${hs}')" title="${hs}">${label}</button>`;
+    });
+    tabs.innerHTML = html;
+  }
+  // Populate dropdown trong tab Tìm phòng
+  const findHs = document.getElementById('findHomestay');
+  if (findHs) {
+    let opts = '<option value="all">Tất cả</option>';
+    homestays.forEach(hs => { opts += `<option value="${hs}">${hs}</option>`; });
+    findHs.innerHTML = opts;
+  }
 }
 
 // =========================================================================
@@ -1293,18 +1328,18 @@ async function openCreateBooking(roomKey, from, to) {
     to = next.toISOString().split('T')[0];
   }
 
-  // Lock phòng
-  const lockRes = await api('lockRoom', { roomKey, from, to, userName: state.user.userName }, 'POST');
-  if (!lockRes.ok) return toast(lockRes.error || 'Không lock được phòng', 'error');
-
+  // === v13: Mở form modal NGAY (không chờ lock) ===
+  // Lock chạy ngầm. UX cảm giác instant (~50ms thay vì 1-3s chờ Apps Script).
+  // Nếu lock fail → toast error + đóng modal.
   state.form = {
     roomKey, room, from, to,
     status: 'Đặt Chỗ',
-    locked: true,
-    lockExpireAt: lockRes.expireAt
+    locked: false,  // chưa lock thành công
+    lockExpireAt: 0,
+    lockPending: true
   };
 
-  // Init UI
+  // Init UI ngay
   document.getElementById('formRoomTitle').textContent = `${room.homestay} · ${room.soPhong}`;
   document.getElementById('formRoomDesc').textContent = `${room.loaiPhong} · ${room.loaiGiuong} · gợi ý ${formatMoney(room.giaMacDinh)}/đêm`;
   document.getElementById('formFrom').value = from;
@@ -1325,18 +1360,37 @@ async function openCreateBooking(roomKey, from, to) {
 
   setFormStatus('Đặt Chỗ');
   recomputePrice();
-  startLockTimer();
 
+  // Show modal NGAY
   document.getElementById('lockBanner').style.display = 'flex';
+  document.getElementById('lockTimer').textContent = 'đang giữ phòng...';
   document.getElementById('modalBooking').classList.add('show');
+
+  // === v13: Lock chạy ngầm sau khi modal đã hiện ===
+  // User cảm giác instant. Nếu lock fail (hiếm) → cảnh báo và đóng modal.
+  api('lockRoom', { roomKey, from, to, userName: state.user.userName }, 'POST').then(lockRes => {
+    if (!lockRes.ok) {
+      toast(lockRes.error || 'Phòng đã bị giữ bởi người khác', 'error');
+      closeBookingModal();
+      return;
+    }
+    state.form.locked = true;
+    state.form.lockExpireAt = lockRes.expireAt;
+    state.form.lockPending = false;
+    startLockTimer();
+  }).catch(err => {
+    toast('Lỗi kết nối: ' + err, 'error');
+    closeBookingModal();
+  });
 }
 
 function closeBookingModal() {
+  // Chỉ unlock nếu đã lock thành công
   if (state.form.locked && state.form.roomKey) {
     api('unlockRoom', { roomKey: state.form.roomKey, userName: state.user.userName }, 'POST');
   }
   stopLockTimer();
-  state.form = { roomKey: null, room: null, from: null, to: null, status: 'Đặt Chỗ', locked: false, lockExpireAt: 0 };
+  state.form = { roomKey: null, room: null, from: null, to: null, status: 'Đặt Chỗ', locked: false, lockExpireAt: 0, lockPending: false };
   document.getElementById('modalBooking').classList.remove('show');
 }
 
