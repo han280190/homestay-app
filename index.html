@@ -97,7 +97,7 @@
   .cal-day-header .day { font-size: 11px; font-weight: 600; }
   .cal-cell.empty { background: #fff; }
   .cal-cell.weekend { background: #FFF3C4; }
-  .cal-cell.busy { font-weight: 600; padding: 4px 4px; font-size: 11px; line-height: 1.2; word-break: break-word; overflow: hidden; }
+  .cal-cell.busy { font-weight: 600; padding: 3px 3px; font-size: 10px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: keep-all; hyphens: none; }
   .cal-cell.busy.cancelled { background: var(--cancelled-bg); }
   .cal-cell.today-mark { box-shadow: inset 0 0 0 2px var(--danger); }
   .cal-hint { font-size: 10px; color: var(--text-faint); text-align: center; margin: 6px 0 0; }
@@ -255,9 +255,9 @@
     <div class="loading"><div class="spinner"></div><div style="margin-top:8px;">Đang tải lịch...</div></div>
   </div>
   <div class="cal-legend">
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: hsl(310, 45%, 77%);"></div>1 đêm</div>
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: hsl(310, 45%, 65%);"></div>3 đêm</div>
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: hsl(310, 45%, 51%);"></div>5+ đêm</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #E8889C;"></div>P. đơn</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #88C4D8;"></div>P. đôi</div>
+    <div class="cal-legend-item" style="opacity:0.7;"><div class="cal-legend-dot" style="background: linear-gradient(to right, #F4B5C5, #9A6FA8);"></div>nhạt → đậm: 1→4+ đêm</div>
     <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #fff; border: 0.5px solid #ddd;"></div>Trống</div>
     <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #FFF3C4;"></div>Cuối tuần</div>
     <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #B0B0B0;"></div>Hủy</div>
@@ -327,7 +327,7 @@
     <span class="v">›</span>
   </div>
   <div style="margin-top: 16px; text-align: center; font-size: 11px; color: var(--text-faint);">
-    Homestay Manager <b style="color: var(--primary);">v10</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
+    Homestay Manager <b style="color: var(--primary);">v11</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
   </div>
 </div>
 
@@ -909,30 +909,33 @@ function renderCalendar() {
   }
 
   // Build matrix per room
-  // === v10: Phối màu tương đồng (analogous) trên wheel màu ===
-  // 5 màu hue khác nhau (hồng-tím-lavender-xanh-ngọc), cùng saturation+lightness
-  // → mắt phân biệt rõ, không chát mắt
-  // Định nghĩa theo HSL [hue, sat, light]
-  const HUES = [
-    [340, 55, 68],  // hồng phấn
-    [310, 45, 65],  // hồng tím
-    [275, 40, 70],  // tím lavender
-    [225, 45, 70],  // xanh lavender
-    [195, 50, 65]   // xanh ngọc
-  ];
+  // === v11: Màu theo LOẠI PHÒNG + ĐỘ ĐẬM theo SỐ ĐÊM ===
+  // Phòng đơn  → tone hồng/tím (1→nhạt, 4+→đậm)
+  // Phòng đôi  → tone xanh    (1→nhạt, 4+→đậm)
+  // Mắt nhận diện: tone = loại phòng | đậm/nhạt = số đêm
+  const COLORS_DON = {
+    1: { bg: '#F4B5C5', text: '#5a1248' },  // hồng phấn nhạt
+    2: { bg: '#E8889C', text: '#5a1248' },  // hồng phấn
+    3: { bg: '#D88AB8', text: '#fff'    },  // hồng tím
+    4: { bg: '#9A6FA8', text: '#fff'    }   // tím đậm (4+ đêm)
+  };
+  const COLORS_DOI = {
+    1: { bg: '#A8DCE8', text: '#0a3a4a' },  // xanh ngọc nhạt
+    2: { bg: '#88C4D8', text: '#0a3a4a' },  // xanh ngọc
+    3: { bg: '#94A8DB', text: '#fff'    },  // xanh lavender
+    4: { bg: '#5F87C9', text: '#fff'    }   // xanh đậm (4+ đêm)
+  };
 
-  // Adjust độ đậm theo số đêm: dài ngày → tối hơn (lightness thấp hơn),
-  // ngắn ngày → sáng hơn (lightness cao hơn). Hue/sat giữ nguyên.
-  function shadeFor(hsl, nights) {
-    const [h, s, l] = hsl;
-    let dl = 0; // delta lightness
-    if (nights <= 1) dl = +12;          // 1 đêm: nhạt nhất
-    else if (nights === 2) dl = +6;     // 2 đêm: nhạt
-    else if (nights === 3) dl = 0;      // 3 đêm: base
-    else if (nights === 4) dl = -8;     // 4 đêm: đậm vừa
-    else dl = -14;                       // 5+ đêm: đậm
-    const newL = Math.max(30, Math.min(85, l + dl));
-    return `hsl(${h}, ${s}%, ${newL}%)`;
+  // Phân loại phòng đơn/đôi từ chuỗi loaiPhong
+  function isDoubleRoom(loaiPhong) {
+    const lp = String(loaiPhong || '').toLowerCase();
+    return /đôi|doi|double|2\s*ng/.test(lp);
+  }
+
+  function pickColor(loaiPhong, totalNights) {
+    const palette = isDoubleRoom(loaiPhong) ? COLORS_DOI : COLORS_DON;
+    const tier = totalNights <= 1 ? 1 : (totalNights === 2 ? 2 : (totalNights === 3 ? 3 : 4));
+    return palette[tier];
   }
 
   d.rooms.forEach(room => {
@@ -940,7 +943,6 @@ function renderCalendar() {
     const roomLabel = (state.calendar.homestay === 'all' ? room.homestay + '·' : '') + room.soPhong;
     html += `<div class="cal-cell cal-room-label">${roomLabel}</div>`;
 
-    // Lọc booking của phòng này, sort theo ngayDen để gán màu xen kẽ
     const monthStart = new Date(d.year, d.month - 1, 1);
     const monthEnd = new Date(d.year, d.month, 1);
     const roomBookings = d.bookings
@@ -953,35 +955,22 @@ function renderCalendar() {
         const end = be > monthEnd ? monthEnd : be;
         const nights = Math.round((end - start) / 86400000);
         if (nights <= 0) return null;
-        // Số đêm THỰC của booking (kể cả vượt khỏi tháng đang xem)
         const totalNights = Math.round((be - bs) / 86400000);
         return { booking: b, startDay: start.getDate(), nights: nights, totalNights: totalNights };
       })
       .filter(x => x !== null)
       .sort((a, b) => a.startDay - b.startDay);
 
-    // Map ngày → segment (booking trải dài) | null
     const dayToSegment = {};
-    roomBookings.forEach((seg, idx) => {
-      // Gán hue: chọn từ HUES sao cho segment liền kề khác hue
-      let hueIdx = idx % HUES.length;
-      if (idx > 0) {
-        const prev = roomBookings[idx - 1];
-        const prevEnd = prev.startDay + prev.nights - 1;
-        const isAdjacent = (seg.startDay - prevEnd) <= 1;
-        if (isAdjacent && hueIdx === ((idx - 1) % HUES.length)) {
-          hueIdx = (idx + 2) % HUES.length;
-        }
-      }
-      // Màu base + shade theo số đêm THỰC
-      seg.color = shadeFor(HUES[hueIdx], seg.totalNights);
-      // Đánh dấu các ngày bị chiếm
+    roomBookings.forEach(seg => {
+      // Lấy màu theo loại phòng + số đêm thực
+      const loaiPhong = seg.booking.loaiPhong || room.loaiPhong;
+      seg.colorObj = pickColor(loaiPhong, seg.totalNights);
       for (let k = 0; k < seg.nights; k++) {
         dayToSegment[seg.startDay + k] = { ...seg, dayOffset: k };
       }
     });
 
-    // Render từng cell. Khi gặp ô đầu của 1 booking → render 1 cell span N cột
     let dd = 1;
     while (dd <= days) {
       const date = new Date(d.year, d.month - 1, dd);
@@ -991,12 +980,10 @@ function renderCalendar() {
 
       const seg = dayToSegment[dd];
       if (seg && seg.dayOffset === 0) {
-        // Render 1 cell span N ngày
         const b = seg.booking;
         const isCancelled = /h(ủ|u)y|cancel/i.test(b.tinhTrang);
-        const bg = isCancelled ? '#B0B0B0' : seg.color;
-        // Text màu trắng nếu nền tối, đen nếu nền sáng
-        const textColor = isCancelled ? '#fff' : (seg.totalNights >= 4 ? '#fff' : '#3a1234');
+        const bg = isCancelled ? '#B0B0B0' : seg.colorObj.bg;
+        const textColor = isCancelled ? '#fff' : seg.colorObj.text;
         const cls = 'cal-cell busy' + (isCancelled ? ' cancelled' : '') + todayCls;
         const ten = (b.ten || '?').replace(/'/g, '&#39;');
         const span = Math.min(seg.nights, days - dd + 1);
