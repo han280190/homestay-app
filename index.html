@@ -621,11 +621,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // === v15: No localStorage - session token is memory only ===
   // User must login every time app starts
-  loadConfig();  // Preload config (users, rooms, sources) for login dropdown
-});
-
-  // Show login
-  await loadConfig();
+  await loadConfig();  // WAIT for config to load before showing login
 });
 
 async function loadConfig() {
