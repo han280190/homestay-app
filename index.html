@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#b62d93">
+<meta name="theme-color" content="#d97706">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Homestay">
 <title>Homestay Manager</title>
 
-<link rel="manifest" href='data:application/manifest+json;charset=utf-8,{"name":"Homestay Manager","short_name":"Homestay","start_url":".","display":"standalone","background_color":"%23ffffff","theme_color":"%23b62d93","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22%3E%3Crect width=%22192%22 height=%22192%22 rx=%2240%22 fill=%22%23b62d93%22/%3E%3Ctext x=%2296%22 y=%22130%22 font-family=%22Arial%22 font-size=%22110%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22%3EH%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
+<link rel="manifest" href='data:application/manifest+json;charset=utf-8,{"name":"Homestay Manager","short_name":"Homestay","start_url":".","display":"standalone","background_color":"%23ffffff","theme_color":"%23d97706","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22%3E%3Crect width=%22192%22 height=%22192%22 rx=%2240%22 fill=%22%23d97706%22/%3E%3Ctext x=%2296%22 y=%22130%22 font-family=%22Arial%22 font-size=%22110%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22%3EH%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
 
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -18,10 +18,10 @@
 
   /* === Tokens === */
   :root {
-    --primary: #b62d93;
-    --primary-2: #cf6bb5;
-    --primary-light: #f4e8f3;
-    --primary-text: #5a1248;
+    --primary: #d97706;
+    --primary-2: #f59e0b;
+    --primary-light: #fff4e1;
+    --primary-text: #92400e;
     --bg: #f4f4f6;
     --surface: #ffffff;
     --border: #e6e4ea;
@@ -31,7 +31,7 @@
     --weekend-bg: #FFF8E1;
     --weekend-header: #F9A825;
     --empty-bg: #FAFAFA;
-    --busy-bg: #b62d93;
+    --busy-bg: #d97706;
     --cancelled-bg: #9E9E9E;
     --success: #1D9E75;
     --warn: #BA7517;
@@ -97,7 +97,7 @@
   /* gap 1px tạo line giữa các ô bằng background-color của parent */
   .cal-grid { display: grid; gap: 1px; background: var(--line); min-width: 100%; }
   .cal-cell { background: #fff; padding: 4px 0; text-align: center; font-size: 10px; min-height: 28px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
-  .cal-room-label { background: var(--accent); color: #fff; font-weight: 600; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 var(--accent); }
+  .cal-room-label { background: var(--accent-light2); color: var(--accent); font-weight: 700; font-size: 11px; position: sticky; left: 0; z-index: 5; box-shadow: 1px 0 0 var(--line); }
   .cal-day-header { background: #fff; color: var(--text); padding: 4px 0; line-height: 1.1; border-bottom: 2px solid var(--accent); font-weight: 600; }
   .cal-day-header.weekend { background: var(--accent-light2); color: var(--accent); font-weight: 700; }
   .cal-day-header .dow { font-size: 9px; opacity: 0.9; }
@@ -134,11 +134,11 @@
   .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
   .badge-hs1 { background: #E1F5EE; color: #04342C; }
   .badge-hs2 { background: #FAEEDA; color: #412402; }
-  .badge-hs3 { background: #FBEAF0; color: #4B1528; }
+  .badge-hs3 { background: #FFF4E1; color: #92400E; }
   .badge-default { background: #f0f0f0; color: #555; }
   .room-card .desc { font-size: 11px; color: var(--text-faint); margin: 0 0 8px; }
   .room-card .desc.warn { color: var(--warn); }
-  .room-card .pick { width: 100%; background: #f7f4f6; border: 0.5px solid var(--border); border-radius: 8px; padding: 7px; font-size: 12px; font-weight: 600; color: var(--primary); cursor: pointer; }
+  .room-card .pick { width: 100%; background: #fff8ee; border: 0.5px solid var(--border); border-radius: 8px; padding: 7px; font-size: 12px; font-weight: 600; color: var(--primary); cursor: pointer; }
 
   .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 4px 10px; }
   .stats-row .stats { font-size: 12px; color: var(--text-muted); }
@@ -259,11 +259,11 @@
     <div class="loading"><div class="spinner"></div><div style="margin-top:8px;">Đang tải lịch...</div></div>
   </div>
   <div class="cal-legend">
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #E8889C;"></div>P. đơn</div>
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #88C4D8;"></div>P. đôi</div>
-    <div class="cal-legend-item" style="opacity:0.7;"><div class="cal-legend-dot" style="background: linear-gradient(to right, #F4B5C5, #9A6FA8);"></div>nhạt → đậm: 1→4+ đêm</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #d97706;"></div>P. đơn</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #15803d;"></div>P. đôi</div>
+    <div class="cal-legend-item" style="opacity:0.85;"><div class="cal-legend-dot" style="background: linear-gradient(to right, #fff4e1, #d97706); border: 0.5px solid #d97706;"></div>nhạt → đậm: 1→2+ đêm</div>
     <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #fff; border: 0.5px solid #ddd;"></div>Trống</div>
-    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #FFF3C4;"></div>Cuối tuần</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #ffe7c2;"></div>Cuối tuần</div>
     <div class="cal-legend-item"><div class="cal-legend-dot" style="background: #B0B0B0;"></div>Hủy</div>
   </div>
 </div>
