@@ -217,8 +217,8 @@
     <select id="loginUser">
       <option value="">Đang tải...</option>
     </select>
-    <label>PIN (6 số)</label>
-    <input type="password" id="loginPin" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off">
+    <label>PIN (4 số)</label>
+    <input type="password" id="loginPin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
     <button class="btn-primary" id="btnLogin">Đăng nhập</button>
   </div>
 </div>
@@ -568,14 +568,13 @@
 // =========================================================================
 // !!! THAY URL DƯỚI ĐÂY BẰNG URL DEPLOYMENT WEB APP CỦA BẠN !!!
 // Dạng: https://script.google.com/macros/s/XXXXXXXXX/exec
-// === v15: Call Apps Script directly (bypass Vercel proxy due to network restrictions) ===
-const API_URL = 'https://script.google.com/macros/s/AKfycbzoTgQZLnCa5_aBnVb9dkmhh3RujLZHjbQi9KuD07hWa5JKxuVmFYmtpdr4gEDKbcYv9A/exec';
+const API_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_URL_HERE/exec';
 
 // =========================================================================
 //                          STATE TOÀN CỤC
 // =========================================================================
 const state = {
-  user: null,                  // { userName, email, role }
+  user: null,                  // { userName, role }
   config: { users: [], sources: [], lockMin: 5 },
   rooms: [],                   // master list
   calendar: { month: 0, year: 0, homestay: 'all', data: null },
@@ -590,20 +589,16 @@ const state = {
 // =========================================================================
 //                          API CALLS
 // =========================================================================
-async function api(action, params = {}, method = 'POST') {
-  // === v15: Add API key to all requests (no session token needed) ===
-  const body = Object.assign({ action }, params);
-  body.apiKey = 'a7f3k9b2m1x5q8w6j4c7d9e2h5t3r1u0';
-  
-  // Always POST to Apps Script
-  const opt = {
-    method: 'POST',
-    body: JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' }
-  };
-  
+async function api(action, params = {}, method = 'GET') {
+  const url = method === 'GET'
+    ? API_URL + '?' + new URLSearchParams(Object.assign({ action }, params)).toString()
+    : API_URL;
+  const opt = method === 'POST'
+    ? { method: 'POST', body: JSON.stringify(Object.assign({ action }, params)),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
+    : { method: 'GET' };
   try {
-    const res = await fetch(API_URL, opt);
+    const res = await fetch(url, opt);
     const text = await res.text();
     try { return JSON.parse(text); }
     catch { return { ok: false, error: 'Invalid JSON: ' + text.substring(0, 200) }; }
@@ -619,8 +614,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('apiUrlShort').textContent =
     API_URL.length > 50 ? API_URL.substring(0, 47) + '...' : API_URL;
 
-  // === v15: No localStorage - session token is memory only ===
-  // User must login every time
+  // Restore login session
+  const saved = localStorage.getItem('hs_user');
+  if (saved) {
+    try {
+      state.user = JSON.parse(saved);
+      await loadConfig();
+      showApp();
+      return;
+    } catch (e) {}
+  }
+
+  // Show login
   await loadConfig();
 });
 
@@ -651,30 +656,24 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
   const userName = document.getElementById('loginUser').value;
   const pin = document.getElementById('loginPin').value;
   if (!userName) return toast('Chọn tên đăng nhập', 'error');
-  if (!pin || pin.length !== 6) return toast('Nhập đủ 6 số PIN', 'error');
+  if (!pin || pin.length !== 4) return toast('Nhập đủ 4 số PIN', 'error');
 
   const btn = document.getElementById('btnLogin');
   btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
-  
-  // === v15: Call Apps Script verifyPin directly (PIN verified at frontend) ===
-  const r = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'verifyPin', userName, pin, apiKey: 'a7f3k9b2m1x5q8w6j4c7d9e2h5t3r1u0' })
-  }).then(res => res.json()).catch(err => ({ ok: false, error: 'Network error: ' + err }));
-  
+  const r = await api('verifyPin', { userName, pin }, 'POST');
   btn.disabled = false; btn.textContent = 'Đăng nhập';
 
   if (!r.ok) return toast(r.error || 'Sai PIN', 'error');
 
-  // === v15: Store user (Apps Script returns { userName, email, role }) ===
-  state.user = r;
+  state.user = r.user;
+  localStorage.setItem('hs_user', JSON.stringify(r.user));
   showApp();
 });
 
 function doLogout() {
   if (!confirm('Đăng xuất?')) return;
   stopChangePolling();
+  localStorage.removeItem('hs_user');
   state.user = null;
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appHeader').style.display = 'none';
