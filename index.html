@@ -591,20 +591,20 @@ const state = {
 // =========================================================================
 //                          API CALLS
 // =========================================================================
-async function api(action, params = {}, method = 'GET') {
-  // === v15: Add session token to all requests ===
+async function api(action, params = {}, method = 'POST') {
+  // === v15: ALWAYS use POST for Vercel proxy (no GET) ===
   const body = Object.assign({ action }, params);
   if (state.sessionToken) body.token = state.sessionToken;
   
-  const url = method === 'GET'
-    ? API_URL + '?' + new URLSearchParams(body).toString()
-    : API_URL;
-  const opt = method === 'POST'
-    ? { method: 'POST', body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' } }
-    : { method: 'GET' };
+  // Force POST to Vercel proxy
+  const opt = {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' }
+  };
+  
   try {
-    const res = await fetch(url, opt);
+    const res = await fetch(API_URL, opt);
     const text = await res.text();
     try { return JSON.parse(text); }
     catch { return { ok: false, error: 'Invalid JSON: ' + text.substring(0, 200) }; }
