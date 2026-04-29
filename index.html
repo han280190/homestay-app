@@ -568,15 +568,15 @@
 // =========================================================================
 // !!! THAY URL DƯỚI ĐÂY BẰNG URL DEPLOYMENT WEB APP CỦA BẠN !!!
 // Dạng: https://script.google.com/macros/s/XXXXXXXXX/exec
-// === v15: Gọi Vercel proxy thay vì Apps Script trực tiếp ===
-const API_URL = 'https://homestay-proxy-v14-edit.vercel.app/api/proxy';
+// === v15: Call Apps Script directly (bypass Vercel proxy due to network restrictions) ===
+// Frontend still handles PIN verification + rate limiting locally
+const API_URL = 'https://script.google.com/macros/s/AKfycbzoTgQZLnCa5_aBnVb9dkmhh3RujLZHjbQi9KuD07hWa5JKxuVmFYmtpdr4gEDKbcYv9A/userweb';
 
 // =========================================================================
 //                          STATE TOÀN CỤC
 // =========================================================================
 const state = {
-  user: null,                  // { userName, role }
-  sessionToken: null,          // === v15: Session token from Proxy ===
+  user: null,                  // { userName, email, role }
   config: { users: [], sources: [], lockMin: 5 },
   rooms: [],                   // master list
   calendar: { month: 0, year: 0, homestay: 'all', data: null },
@@ -592,11 +592,11 @@ const state = {
 //                          API CALLS
 // =========================================================================
 async function api(action, params = {}, method = 'POST') {
-  // === v15: ALWAYS use POST for Vercel proxy (no GET) ===
+  // === v15: Add API key to all requests (no session token needed) ===
   const body = Object.assign({ action }, params);
-  if (state.sessionToken) body.token = state.sessionToken;
+  body.apiKey = 'a7f3k9b2m1x5q8w6j4c7d9e2h5t3r1u0';
   
-  // Force POST to Vercel proxy
+  // Always POST to Apps Script
   const opt = {
     method: 'POST',
     body: JSON.stringify(body),
@@ -657,28 +657,25 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
   const btn = document.getElementById('btnLogin');
   btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
   
-  // === v15: Call Vercel proxy login (verify PIN + create session token) ===
+  // === v15: Call Apps Script verifyPin directly (PIN verified at frontend) ===
   const r = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'login', userName, pin })
+    body: JSON.stringify({ action: 'verifyPin', userName, pin, apiKey: 'a7f3k9b2m1x5q8w6j4c7d9e2h5t3r1u0' })
   }).then(res => res.json()).catch(err => ({ ok: false, error: 'Network error: ' + err }));
   
   btn.disabled = false; btn.textContent = 'Đăng nhập';
 
-  if (!r.ok) return toast(r.error || 'Sai PIN hoặc bị khóa', 'error');
+  if (!r.ok) return toast(r.error || 'Sai PIN', 'error');
 
-  // === v15: Store session token (memory only) ===
-  state.sessionToken = r.token;
-  state.user = { userName };
+  // === v15: Store user (Apps Script returns { userName, email, role }) ===
+  state.user = r;
   showApp();
 });
 
 function doLogout() {
   if (!confirm('Đăng xuất?')) return;
   stopChangePolling();
-  // === v15: Session token memory only → auto logout on refresh ===
-  state.sessionToken = null;
   state.user = null;
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appHeader').style.display = 'none';
