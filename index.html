@@ -568,6 +568,7 @@
 // =========================================================================
 // !!! THAY URL DƯỚI ĐÂY BẰNG URL DEPLOYMENT WEB APP CỦA BẠN !!!
 // Dạng: https://script.google.com/macros/s/XXXXXXXXX/exec
+// === v15: Gọi Vercel proxy thay vì Apps Script trực tiếp ===
 const API_URL = 'https://homestay-proxy-v14-edit.vercel.app/api/proxy';
 
 // =========================================================================
@@ -575,7 +576,7 @@ const API_URL = 'https://homestay-proxy-v14-edit.vercel.app/api/proxy';
 // =========================================================================
 const state = {
   user: null,                  // { userName, role }
-  sessionToken: null,          // === v15: Session token from Proxy (memory only) ===
+  sessionToken: null,          // === v15: Session token from Proxy ===
   config: { users: [], sources: [], lockMin: 5 },
   rooms: [],                   // master list
   calendar: { month: 0, year: 0, homestay: 'all', data: null },
@@ -591,16 +592,16 @@ const state = {
 //                          API CALLS
 // =========================================================================
 async function api(action, params = {}, method = 'GET') {
-  // === v15: Add session token + apiKey to all requests ===
+  // === v15: Add session token to all requests ===
   const body = Object.assign({ action }, params);
-  if (state.sessionToken) body.token = state.sessionToken; // Add token if logged in
+  if (state.sessionToken) body.token = state.sessionToken;
   
   const url = method === 'GET'
     ? API_URL + '?' + new URLSearchParams(body).toString()
     : API_URL;
   const opt = method === 'POST'
     ? { method: 'POST', body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' } }  // v15: application/json
+        headers: { 'Content-Type': 'application/json' } }
     : { method: 'GET' };
   try {
     const res = await fetch(url, opt);
@@ -620,8 +621,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     API_URL.length > 50 ? API_URL.substring(0, 47) + '...' : API_URL;
 
   // === v15: No localStorage - session token is memory only ===
-  // User must login every time app starts
-  await loadConfig();  // WAIT for config to load before showing login
+  // User must login every time
+  await loadConfig();
 });
 
 async function loadConfig() {
@@ -651,13 +652,13 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
   const userName = document.getElementById('loginUser').value;
   const pin = document.getElementById('loginPin').value;
   if (!userName) return toast('Chọn tên đăng nhập', 'error');
-  if (!pin || pin.length !== 6) return toast('Nhập đủ 6 số PIN', 'error');  // v15: 6 chữ số
+  if (!pin || pin.length !== 6) return toast('Nhập đủ 6 số PIN', 'error');
 
   const btn = document.getElementById('btnLogin');
   btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
   
   // === v15: Call Vercel proxy login (verify PIN + create session token) ===
-  const r = await fetch(PROXY_URL, {
+  const r = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'login', userName, pin })
@@ -667,17 +668,16 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
 
   if (!r.ok) return toast(r.error || 'Sai PIN hoặc bị khóa', 'error');
 
-  // === v15: Store session token (memory only, not localStorage) ===
+  // === v15: Store session token (memory only) ===
   state.sessionToken = r.token;
   state.user = { userName };
-  // KHÔNG lưu localStorage - session token chỉ ở memory (auto logout on refresh)
   showApp();
 });
 
 function doLogout() {
   if (!confirm('Đăng xuất?')) return;
   stopChangePolling();
-  // === v15: Session token lưu memory only → auto logout on refresh ===
+  // === v15: Session token memory only → auto logout on refresh ===
   state.sessionToken = null;
   state.user = null;
   document.getElementById('loginScreen').style.display = 'flex';
