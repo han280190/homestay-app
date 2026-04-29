@@ -217,7 +217,7 @@
     <select id="loginUser">
       <option value="">Đang tải...</option>
     </select>
-    <label>PIN (4 số)</label>
+    <label>PIN (6 số)</label>
     <input type="password" id="loginPin" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off">
     <button class="btn-primary" id="btnLogin">Đăng nhập</button>
   </div>
@@ -324,7 +324,7 @@
     <span class="v">›</span>
   </div>
   <div style="margin-top: 16px; text-align: center; font-size: 11px; color: var(--text-faint);">
-    Homestay Manager <b style="color: var(--primary);">v14</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
+    Homestay Manager <b style="color: var(--primary);">v13</b> · 2026-04-28<br>API: <span id="apiUrlShort">-</span>
   </div>
 </div>
 
@@ -568,68 +568,45 @@
 // =========================================================================
 // !!! THAY URL DƯỚI ĐÂY BẰNG URL DEPLOYMENT WEB APP CỦA BẠN !!!
 // Dạng: https://script.google.com/macros/s/XXXXXXXXX/exec
-// === v14: Gọi Vercel proxy thay vì Apps Script trực tiếp ===
-// Proxy handle: PIN verify, rate limit, session token, audit log
-const PROXY_URL = 'https://homestay-proxy-v14-edit.vercel.app/api/proxy'; // Thay xxx by Vercel domain 
-// Fallback (nếu cần debug): uncomment dòng dưới để gọi Apps Script trực tiếp
-// const PROXY_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_URL_HERE/exec';
+const API_URL = 'https://homestay-proxy-v14-edit.vercel.app/api/proxy';
 
 // =========================================================================
 //                          STATE TOÀN CỤC
 // =========================================================================
 const state = {
   user: null,                  // { userName, role }
-  sessionToken: null,          // v14: Session token (memory only, không localStorage)
+  sessionToken: null,          // === v15: Session token from Proxy (memory only) ===
   config: { users: [], sources: [], lockMin: 5 },
-  rooms: [],
+  rooms: [],                   // master list
   calendar: { month: 0, year: 0, homestay: 'all', data: null },
   find: { results: null },
   bookings: { all: [], filtered: [] },
   form: {
     roomKey: null, room: null, from: null, to: null,
-    status: 'Đặt Chỗ', locked: false, lockExpireAt: 0, lockPending: false
+    status: 'Đặt Chỗ', locked: false, lockExpireAt: 0
   }
 };
 
 // =========================================================================
-//                          API CALLS (v14: via Vercel proxy)
+//                          API CALLS
 // =========================================================================
 async function api(action, params = {}, method = 'GET') {
-  // === v14: Gọi Vercel proxy ===
-  const url = PROXY_URL;
+  // === v15: Add session token + apiKey to all requests ===
+  const body = Object.assign({ action }, params);
+  if (state.sessionToken) body.token = state.sessionToken; // Add token if logged in
   
-  // Nếu đã login → add session token
-  const body = {
-    action,
-    ...params
-  };
-  if (state.sessionToken) {
-    body.token = state.sessionToken;
-  }
-  
+  const url = method === 'GET'
+    ? API_URL + '?' + new URLSearchParams(body).toString()
+    : API_URL;
   const opt = method === 'POST'
-    ? { 
-        method: 'POST', 
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' }
-      }
+    ? { method: 'POST', body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' } }  // v15: application/json
     : { method: 'GET' };
-    
   try {
     const res = await fetch(url, opt);
     const text = await res.text();
-    try { 
-      const data = JSON.parse(text);
-      // Check if token expired
-      if (!data.ok && data.error && data.error.includes('token')) {
-        state.sessionToken = null;
-        showLoginScreen();
-      }
-      return data;
-    }
-    catch { 
-      return { ok: false, error: 'Invalid JSON: ' + text.substring(0, 200) }; 
-    }
+    try { return JSON.parse(text); }
+    catch { return { ok: false, error: 'Invalid JSON: ' + text.substring(0, 200) }; }
   } catch (e) {
     return { ok: false, error: 'Network: ' + e.message };
   }
@@ -642,16 +619,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('apiUrlShort').textContent =
     API_URL.length > 50 ? API_URL.substring(0, 47) + '...' : API_URL;
 
-  // Restore login session
-  const saved = localStorage.getItem('hs_user');
-  if (saved) {
-    try {
-      state.user = JSON.parse(saved);
-      await loadConfig();
-      showApp();
-      return;
-    } catch (e) {}
-  }
+  // === v15: No localStorage - session token is memory only ===
+  // User must login every time app starts
+  loadConfig();  // Preload config (users, rooms, sources) for login dropdown
+});
 
   // Show login
   await loadConfig();
@@ -684,42 +655,39 @@ document.getElementById('btnLogin').addEventListener('click', async () => {
   const userName = document.getElementById('loginUser').value;
   const pin = document.getElementById('loginPin').value;
   if (!userName) return toast('Chọn tên đăng nhập', 'error');
-  if (!pin || pin.length !== 6) return toast('Nhập đủ 6 số PIN', 'error');  // v14: 6 chữ số
+  if (!pin || pin.length !== 6) return toast('Nhập đủ 6 số PIN', 'error');  // v15: 6 chữ số
 
   const btn = document.getElementById('btnLogin');
   btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
   
-  // === v14: Call proxy login endpoint (verify PIN → get session token) ===
-  const r = await api('login', { userName, pin }, 'POST');
+  // === v15: Call Vercel proxy login (verify PIN + create session token) ===
+  const r = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'login', userName, pin })
+  }).then(res => res.json()).catch(err => ({ ok: false, error: 'Network error: ' + err }));
+  
   btn.disabled = false; btn.textContent = 'Đăng nhập';
 
-  if (!r.ok) {
-    // Rate limit: lock 10 phút sau 5 sai
-    return toast(r.error || 'Sai PIN', 'error');
-  }
+  if (!r.ok) return toast(r.error || 'Sai PIN hoặc bị khóa', 'error');
 
-  // Login thành công → lưu session token (memory, không localStorage)
-  state.sessionToken = r.token; // Token expire 30 phút, auto refresh
-  state.user = { userName }; // Tên user đủ dùng
-  
-  // KHÔNG lưu vào localStorage (an toàn hơn)
+  // === v15: Store session token (memory only, not localStorage) ===
+  state.sessionToken = r.token;
+  state.user = { userName };
+  // KHÔNG lưu localStorage - session token chỉ ở memory (auto logout on refresh)
   showApp();
 });
 
 function doLogout() {
   if (!confirm('Đăng xuất?')) return;
   stopChangePolling();
+  // === v15: Session token lưu memory only → auto logout on refresh ===
   state.sessionToken = null;
   state.user = null;
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appHeader').style.display = 'none';
   document.getElementById('bottomNav').style.display = 'none';
   document.getElementById('fab').style.display = 'none';
-}
-
-function showLoginScreen() {
-  // Auto logout nếu token expire
-  doLogout();
 }
 
 function showApp() {
