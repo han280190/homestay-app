@@ -113,7 +113,7 @@
   .cal-legend-dot { width: 12px; height: 12px; border-radius: 2px; }
 
   /* FAB */
-  .fab { position: fixed; right: 18px; bottom: 78px; width: 52px; height: 52px; border-radius: 50%; background: var(--primary); color: #fff; border: none; font-size: 26px; font-weight: 300; line-height: 1; box-shadow: 0 3px 10px rgba(182,45,147,0.4); cursor: pointer; z-index: 90; display: flex; align-items: center; justify-content: center; }
+  .fab { position: fixed; right: 18px; bottom: 78px; width: 52px; height: 52px; border-radius: 50%; background: #d97706; color: #fff; border: none; font-size: 26px; font-weight: 300; line-height: 1; box-shadow: 0 3px 10px rgba(217,119,6,0.4); cursor: pointer; z-index: 90; display: flex; align-items: center; justify-content: center; }
 
   /* === Find availability page === */
   .field-group { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 12px; border: 0.5px solid var(--border); }
@@ -956,16 +956,16 @@ function renderCalendar() {
   // Phòng đôi  → tone xanh    (1→nhạt, 4+→đậm)
   // Mắt nhận diện: tone = loại phòng | đậm/nhạt = số đêm
   const COLORS_DON = {
-    1: { bg: '#F4B5C5', text: '#5a1248' },  // hồng phấn nhạt
-    2: { bg: '#E8889C', text: '#5a1248' },  // hồng phấn
-    3: { bg: '#D88AB8', text: '#fff'    },  // hồng tím
-    4: { bg: '#9A6FA8', text: '#fff'    }   // tím đậm (4+ đêm)
+    1: { bg: '#fff4e1', text: '#d97706', border: '1px solid #d97706' },  // cam nhạt + viền cam
+    2: { bg: '#d97706', text: '#fff' },  // cam đậm
+    3: { bg: '#d97706', text: '#fff' },  // cam đậm
+    4: { bg: '#d97706', text: '#fff' }   // cam đậm (4+ đêm)
   };
   const COLORS_DOI = {
-    1: { bg: '#A8DCE8', text: '#0a3a4a' },  // xanh ngọc nhạt
-    2: { bg: '#88C4D8', text: '#0a3a4a' },  // xanh ngọc
-    3: { bg: '#94A8DB', text: '#fff'    },  // xanh lavender
-    4: { bg: '#5F87C9', text: '#fff'    }   // xanh đậm (4+ đêm)
+    1: { bg: '#ecfdf5', text: '#15803d', border: '1px solid #15803d' },  // xanh lá nhạt + viền
+    2: { bg: '#15803d', text: '#fff' },  // xanh lá đậm
+    3: { bg: '#15803d', text: '#fff' },  // xanh lá đậm
+    4: { bg: '#15803d', text: '#fff' }   // xanh lá đậm (4+ đêm)
   };
 
   // Phân loại phòng đơn/đôi từ chuỗi loaiPhong
@@ -1026,10 +1026,12 @@ function renderCalendar() {
         const isCancelled = /h(ủ|u)y|cancel/i.test(b.tinhTrang);
         const bg = isCancelled ? '#B0B0B0' : seg.colorObj.bg;
         const textColor = isCancelled ? '#fff' : seg.colorObj.text;
+        const border = isCancelled ? '' : (seg.colorObj.border || '');
         const cls = 'cal-cell busy' + (isCancelled ? ' cancelled' : '') + todayCls;
         const ten = (b.ten || '?').replace(/'/g, '&#39;');
         const span = Math.min(seg.nights, days - dd + 1);
-        html += `<div class="${cls}" style="grid-column: span ${span}; background: ${bg}; color: ${textColor};" onclick="showBookingDetail('${b.bookingId}')" title="${ten} (${b.bookingId}) · ${seg.totalNights} đêm">${ten}</div>`;
+        const borderStyle = border ? `border: ${border};` : '';
+        html += `<div class="${cls}" style="grid-column: span ${span}; background: ${bg}; color: ${textColor}; ${borderStyle}" onclick="showBookingDetail('${b.bookingId}')" title="${ten} (${b.bookingId}) · ${seg.totalNights} đêm">${ten}</div>`;
         dd += span;
       } else if (seg) {
         dd++;
